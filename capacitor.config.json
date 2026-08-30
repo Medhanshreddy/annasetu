@@ -1,0 +1,8 @@
+{
+  "appId": "in.gov.annasetu",
+  "appName": "AnnaSetu",
+  "webDir": "public",
+  "server": {
+    "androidScheme": "https"
+  }
+}
