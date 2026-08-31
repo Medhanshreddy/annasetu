@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AnnaSetu Lab — professional test</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    body { background: #0c1612; color: #e8f4ee; font-family: ui-sans-serif, system-ui; margin: 0; }
+    main { max-width: 860px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; }
+    .box { background: #13241c; border: 1px solid #2a4a3a; border-radius: 14px; padding: 14px; margin: 12px 0; }
+    input { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #345; background: #0b1712; color: #fff; margin: 6px 0; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; background: #1f8a56; color: #fff; font-weight: 700; margin: 6px 6px 0 0; cursor: pointer; }
+    pre { white-space: pre-wrap; background: #07110d; padding: 10px; border-radius: 10px; font-size: 12px; }
+    a { color: #8ee0b4; }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="/">← Back to AnnaSetu</a></p>
+  <h1>AnnaSetu test lab</h1>
+  <p>Use this page to prove server, SQLite, login, OTP and SMS like a professional demo.</p>
+
+  <div class="box">
+    <b>1. Server health</b>
+    <button id="h">Ping server</button>
+    <pre id="hout">not tested</pre>
+  </div>
+  <div class="box">
+    <b>2. PIN login (Ravi)</b>
+    <button id="l">Login 9876543210 / 1234</button>
+    <pre id="lout">not tested</pre>
+  </div>
+  <div class="box">
+    <b>3. OTP</b>
+    <button id="o">Request OTP for 9876543210</button>
+    <pre id="oout">not tested</pre>
+  </div>
+  <div class="box">
+    <b>4. Extra SIM gateway</b>
+    <input id="url" placeholder="http://192.168.x.x:8080/message" />
+    <input id="user" placeholder="gateway username (optional)" />
+    <input id="pass" placeholder="gateway password (optional)" type="password" />
+    <button id="save">Save SIM mode</button>
+    <button id="off">Use outbox only</button>
+    <pre id="sout">not saved</pre>
+  </div>
+  <div class="box">
+    <b>5. Send test SMS</b>
+    <input id="to" value="9876543210" />
+    <button id="t">Send test text</button>
+    <pre id="tout">not tested</pre>
+  </div>
+</main>
+<script>
+let token = "";
+const show = (id, obj) => document.getElementById(id).textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+document.getElementById("h").onclick = async () => {
+  show("hout", await (await fetch("/api/health")).json());
+};
+document.getElementById("l").onclick = async () => {
+  const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: "9876543210", pin: "1234" }) });
+  const j = await r.json();
+  token = j.token || "";
+  show("lout", j);
+};
+document.getElementById("o").onclick = async () => {
+  const r = await fetch("/api/otp/request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: "9876543210" }) });
+  show("oout", await r.json());
+};
+document.getElementById("save").onclick = async () => {
+  const r = await fetch("/api/sms/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+    mode: "sim",
+    simGatewayUrl: document.getElementById("url").value,
+    simGatewayUser: document.getElementById("user").value,
+    simGatewayPass: document.getElementById("pass").value
+  }) });
+  show("sout", await r.json());
+};
+document.getElementById("off").onclick = async () => {
+  const r = await fetch("/api/sms/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "outbox", simGatewayUrl: "" }) });
+  show("sout", await r.json());
+};
+document.getElementById("t").onclick = async () => {
+  if (!token) { show("tout", "Login first in step 2"); return; }
+  const r = await fetch("/api/sms/test", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token }, body: JSON.stringify({ phone: document.getElementById("to").value, text: "AnnaSetu lab test SMS" }) });
+  show("tout", await r.json());
+};
+</script>
+</body>
+</html>
