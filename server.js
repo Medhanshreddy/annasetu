@@ -6,7 +6,9 @@ const { connect, seed, id, nowIso, ensureHourlySlots, istParts, ensureDemoUsers 
 const { sendSms, loadSettings, saveSettings } = require("./sms");
 
 const PORT = process.env.PORT || 8080;
-const PUBLIC = path.join(__dirname, "public");
+const PUBLIC = fs.existsSync(path.join(__dirname, "public", "index.html"))
+  ? path.join(__dirname, "public")
+  : __dirname;
 const db = connect();
 seed(db);
 try { ensureDemoUsers(db); } catch (e) { console.warn(e.message); }
