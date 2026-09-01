@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AnnaSetu · Gate booth</title>
+  <style>
+    :root{--bg:#08140f;--card:#102018;--line:#244536;--ink:#eef6f1;--muted:#9fb3aa;--go:#0b6e4f}
+    *{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+    header{padding:14px 18px;background:#0d1c16;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+    .wrap{max-width:980px;margin:0 auto;padding:16px}
+    .grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+    h2{margin:0 0 8px;font-size:18px}p{color:var(--muted);font-size:14px;line-height:1.45}
+    label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+    input{width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:#0b1813;color:#fff;font:inherit}
+    button{border:0;border-radius:12px;padding:12px 14px;font:inherit;font-weight:700;cursor:pointer}
+    .go{background:var(--go);color:#fff;width:100%;margin-top:10px}
+    .hold{background:#3a2614;color:#f3d2a6;width:100%;margin-top:8px;border:1px solid #6b4a24}
+    .soft{background:#183226;color:#d5eadb;width:100%;margin-top:8px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+    @media(max-width:700px){.stats{grid-template-columns:1fr 1fr}}
+    .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+    .stat b{display:block;font-size:26px;margin-top:4px}
+    .stat span{color:var(--muted);font-size:12px}
+    #reader{width:100%;min-height:240px;background:#06110c;border-radius:12px;overflow:hidden}
+    .ok{color:#8fd4a8}.warn{color:#e2b13c}.bad{color:#f0a3a3}
+    .chip{display:inline-block;padding:3px 8px;border-radius:999px;background:#1e3a2e;font-size:12px}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <header>
+    <div><b>AnnaSetu gate booth</b><div style="font-size:12px;color:#9fb3aa">Scan QR · allow or hold · procurement updates</div></div>
+    <div id="who">Not signed in</div>
+  </header>
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat"><span>Waiting outside</span><b id="nOut">-</b></div>
+      <div class="stat"><span>Inside yard</span><b id="nIn">-</b></div>
+      <div class="stat"><span>Weighed / moved out</span><b id="nDone">-</b></div>
+      <div class="stat"><span>Now</span><b id="nBusy">-</b></div>
+    </div>
+    <p id="advice"></p>
+    <div id="loginCard" class="card">
+      <h2>Gate officer login</h2>
+      <label>Mobile</label><input id="phone" value="9000000001" inputmode="numeric" />
+      <label>PIN</label><input id="pin" type="password" placeholder="PIN" inputmode="numeric" />
+      <button class="go" id="doLogin">Open booth</button>
+      <p id="loginErr" class="bad"></p>
+    </div>
+    <div id="booth" class="grid hidden">
+      <div class="card">
+        <h2>Camera</h2>
+        <p>Allow camera when asked. Or type the token printed under the farmer QR.</p>
+        <div id="reader"></div>
+        <label>Token</label>
+        <input id="token" placeholder="1108" />
+        <button class="go" id="find">Read token</button>
+        <button class="soft" id="recam">Restart camera</button>
+      </div>
+      <div class="card">
+        <h2>Farmer at gate</h2>
+        <div id="detail">No token yet.</div>
+      </div>
+    </div>
+  </div>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    let auth = sessionStorage.getItem("gateAuth") || "";
+    let cam = null;
+    let current = null;
+    async function api(path, opt) {
+      const res = await fetch(path, {
+        method: (opt && opt.method) || "GET",
+        headers: { "Content-Type": "application/json", ...(auth ? { Authorization: "Bearer " + auth } : {}) },
+        body: opt && opt.body ? JSON.stringify(opt.body) : undefined
+      });
+      const data = await res.json().catch(function(){ return {}; });
+      if (!res.ok) throw new Error(data.error || "Failed");
+      return data;
+    }
+    function parseQr(t) {
+      t = String(t || "").trim();
+      if (t.indexOf("ANNASETU|") === 0) return t.split("|")[1];
+      return t;
+    }
+    function hourAdvice() {
+      const h = new Date().getHours();
+      if (h >= 9 && h <= 13) return "Peak 9:00-13:00. If BUSY, send extra farmers to another PPC.";
+      if (h >= 14 && h <= 16) return "Afternoon is lighter. Good time to call waiting farmers in.";
+      return "Outside 9-16 the yard is thin. Hold walk-ins unless they have a token.";
+    }
+    async function refreshBoard() {
+      try {
+        const list = await api("/api/queue/C1");
+        const waiting = list.filter(function(b){ return b.status === "booked"; }).length;
+        const inside = list.filter(function(b){ return b.status === "checked_in"; }).length;
+        const done = list.filter(function(b){ return ["weighed","lifted","delivered","paid"].indexOf(b.status) >= 0; }).length;
+        document.getElementById("nOut").textContent = waiting;
+        document.getElementById("nIn").textContent = inside;
+        document.getElementById("nDone").textContent = done;
+        var label = "OPEN";
+        if (waiting >= 15) label = "CROWDED";
+        else if (waiting >= 8) label = "BUSY";
+        document.getElementById("nBusy").textContent = label;
+        document.getElementById("advice").textContent = waiting + " outside · " + inside + " inside · " + hourAdvice();
+      } catch (e) {}
+    }
+    function renderFarmer(b, note) {
+      current = b;
+      var html = (note ? "<p class='ok'>" + note + "</p>" : "") +
+        "<p><b>" + (b.farmerName || "Farmer") + "</b> · " + (b.phone || "") + "</p>" +
+        "<p>Token <b>" + (b.tokenNo || "") + "</b></p>" +
+        "<p>" + (b.centreName || "") + "<br>" + (b.date || "") + " · " + (b.window || "") + " · " + (b.qty || "") + " q</p>" +
+        "<p class='chip'>" + b.status + "</p>";
+      if (b.status === "booked") {
+        html += "<button class='go' id='allow'>Allow entry</button><button class='hold' id='deny'>Hold outside</button>";
+      } else {
+        html += "<p>Already " + b.status + ". No second gate stamp.</p>";
+      }
+      document.getElementById("detail").innerHTML = html;
+      var a = document.getElementById("allow");
+      var d = document.getElementById("deny");
+      if (a) a.onclick = allow;
+      if (d) d.onclick = deny;
+    }
+    async function lookup(raw) {
+      var tokenNo = parseQr(raw);
+      document.getElementById("token").value = tokenNo;
+      document.getElementById("detail").textContent = "Reading " + tokenNo + "...";
+      try {
+        var b = await api("/api/scan", { method: "POST", body: { tokenNo: tokenNo } });
+        renderFarmer(b, "");
+      } catch (e) {
+        current = null;
+        document.getElementById("detail").innerHTML = "<p class='bad'>" + e.message + "</p>";
+      }
+    }
+    async function allow() {
+      if (!current) return;
+      try {
+        await api("/api/checkin", { method: "POST", body: { bookingId: current.id } });
+        current.status = "checked_in";
+        renderFarmer(current, "Entry allowed. Procurement updated to checked in.");
+        refreshBoard();
+      } catch (e) {
+        document.getElementById("detail").innerHTML += "<p class='bad'>" + e.message + "</p>";
+      }
+    }
+    function deny() {
+      document.getElementById("detail").innerHTML += "<p class='warn'>Held outside. Token stays booked. Farmer can wait or change centre.</p>";
+    }
+    function startCam() {
+      if (!window.Html5Qrcode) return;
+      if (cam) { try { cam.stop(); } catch (e) {} }
+      cam = new Html5Qrcode("reader");
+      Html5Qrcode.getCameras().then(function(list) {
+        var pick = list.find(function(c){ return /back|rear|environment/i.test(c.label); }) || list[0];
+        if (!pick) return;
+        cam.start(pick.id, { fps: 8, qrbox: 220 }, function(text){ lookup(text); }).catch(function(){});
+      }).catch(function(){});
+    }
+    document.getElementById("doLogin").onclick = async function() {
+      document.getElementById("loginErr").textContent = "";
+      try {
+        var r = await api("/api/login", { method: "POST", body: { phone: document.getElementById("phone").value, pin: document.getElementById("pin").value } });
+        auth = r.token;
+        sessionStorage.setItem("gateAuth", auth);
+        document.getElementById("who").textContent = r.user.name + " · gate";
+        document.getElementById("loginCard").classList.add("hidden");
+        document.getElementById("booth").classList.remove("hidden");
+        refreshBoard();
+        startCam();
+      } catch (e) {
+        document.getElementById("loginErr").textContent = e.message;
+      }
+    };
+    document.getElementById("find").onclick = function(){ lookup(document.getElementById("token").value); };
+    document.getElementById("recam").onclick = startCam;
+    refreshBoard();
+  </script>
+</body>
+</html>
