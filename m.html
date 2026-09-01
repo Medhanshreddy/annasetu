@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#07120e"/>
+<title>AnnaSetu</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#07120e;color:#eef6f1;min-height:100vh}
+.top{position:sticky;top:0;z-index:5;padding:14px 16px 10px;background:#07120e;display:flex;justify-content:space-between;align-items:center}
+.brand{font-weight:800;letter-spacing:-.02em}
+.sub{font-size:11px;color:#8fa59b}
+.sheet{padding:8px 16px 96px}
+.hero{padding:8px 0 18px}
+.hero h1{font-size:28px;line-height:1.15;font-weight:800}
+.muted{color:#8fa59b;font-size:13px}
+label{display:block;margin:12px 0 4px;font-size:12px;color:#8fa59b}
+input,select{width:100%;padding:14px;border-radius:14px;border:1px solid #244536;background:#102018;color:#fff;font:inherit}
+.btn{width:100%;border:0;border-radius:16px;padding:15px;font:inherit;font-weight:800;margin-top:12px;background:#1dbf73;color:#062015}
+.btn2{background:#183226;color:#d5eadb}
+.btn3{background:#3a2614;color:#f3d2a6}
+.card{background:#102018;border:1px solid #1e3a2e;border-radius:20px;padding:16px;margin-top:12px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #1e3a2e}
+.chip{font-size:11px;padding:3px 8px;border-radius:99px;background:#1e3a2e}
+.token{text-align:center;padding:22px 10px;border-radius:24px;background:linear-gradient(180deg,#143326,#0b6e4f)}
+.token .n{font-size:40px;font-weight:800;letter-spacing:2px}
+.nav{position:fixed;left:10px;right:10px;bottom:10px;display:grid;grid-template-columns:repeat(5,1fr);background:#0d1c16;border:1px solid #244536;border-radius:22px;padding:8px 4px 10px}
+.nav button{background:none;border:0;color:#8fa59b;font-size:10px;font-weight:700}
+.nav button.on{color:#111;background:#e2b13c;border-radius:14px;padding:8px 0}
+.err{color:#f0a3a3;font-size:13px;margin-top:8px}
+.perm{background:#14261d;border-radius:16px;padding:12px;margin-top:12px;font-size:13px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div><div class="brand">AnnaSetu</div><div class="sub" id="who">Phone app · Render live</div></div>
+  <div class="chip" id="net">cloud</div>
+</header>
+<main class="sheet" id="root"></main>
+<nav class="nav" id="nav" hidden></nav>
+<script>
+const API = (location.hostname.indexOf("onrender.com")>=0 || location.protocol==="https:") ? "" : (window.ANNASETU_CLOUD||"https://annasetu-tp6p.onrender.com");
+let token = localStorage.getItem("asTok")||"";
+let user = null; try{user=JSON.parse(localStorage.getItem("asUser")||"null")}catch(e){}
+let tab = "home";
+let booking = null, centres = [], smart = null, note = "";
+
+async function api(path, opt){
+  const res = await fetch(API+path,{
+    method:(opt&&opt.method)||"GET",
+    headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})},
+    body: opt&&opt.body?JSON.stringify(opt.body):undefined
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error||"Failed");
+  return data;
+}
+function el(html){ document.getElementById("root").innerHTML = html; }
+function toast(t){ note=t; const n=document.getElementById("who"); if(n) n.textContent=t; }
+
+async function askPerms(){
+  try{ if(navigator.mediaDevices) await navigator.mediaDevices.getUserMedia({video:true}).then(s=>s.getTracks().forEach(t=>t.stop())); }catch(e){}
+  try{ if("Notification" in window) await Notification.requestPermission(); }catch(e){}
+}
+
+function loginView(){
+  document.getElementById("nav").hidden = true;
+  el(`<div class="hero"><h1>Book the yard.<br>Skip the line.</h1><p class="muted" style="margin-top:8px">Same live database as the district laptop.</p></div>
+    <div class="card">
+      <label>Mobile</label><input id="phone" inputmode="numeric" placeholder="10-digit number"/>
+      <label>PIN</label><input id="pin" type="password" inputmode="numeric" placeholder="PIN"/>
+      <button class="btn" id="li">Continue</button>
+      <p class="muted" style="margin-top:10px">Or OTP</p>
+      <input id="otp" inputmode="numeric" placeholder="6-digit OTP"/>
+      <button class="btn btn2" id="so">Get OTP</button>
+      <button class="btn" id="vo">Verify OTP</button>
+      <p class="err" id="err"></p>
+    </div>
+    <div class="perm">This app will ask for camera (gate QR), notifications (token/payment), and storage for the gate pass image.</div>`);
+  document.getElementById("li").onclick = async ()=>{
+    try{
+      const r = await api("/api/login",{method:"POST",body:{phone:phone.value,pin:pin.value}});
+      save(r); askPerms(); render();
+    }catch(e){ err.textContent=e.message; }
+  };
+  document.getElementById("so").onclick = async ()=>{
+    try{
+      const r = await api("/api/otp/request",{method:"POST",body:{phone:phone.value}});
+      err.textContent = r.otp ? ("OTP on screen: "+r.otp) : "OTP sent";
+    }catch(e){ err.textContent=e.message; }
+  };
+  document.getElementById("vo").onclick = async ()=>{
+    try{
+      const r = await api("/api/otp/verify",{method:"POST",body:{phone:phone.value,otp:otp.value}});
+      save(r); askPerms(); render();
+    }catch(e){ err.textContent=e.message; }
+  };
+}
+function save(r){ token=r.token; user=r.user; localStorage.setItem("asTok",token); localStorage.setItem("asUser",JSON.stringify(user)); }
+
+function nav(){
+  const items = user.role==="farmer"
+    ? [["home","Home"],["book","Book"],["token","Token"],["track","Track"],["more","More"]]
+    : user.role==="centre"
+    ? [["home","Queue"],["scan","Scan"],["yard","Yard"],["more","More"],["out","Out"]]
+    : [["home","Desk"],["more","More"],["out","Out"],["out2","-"],["out3","-"]];
+  const n = document.getElementById("nav");
+  n.hidden = false;
+  n.innerHTML = items.map(([id,l])=>`<button class="${tab===id?"on":""}" data-t="${id}">${l}</button>`).join("");
+  n.querySelectorAll("button").forEach(b=>b.onclick=()=>{ if(b.dataset.t.startsWith("out")){logout();return;} tab=b.dataset.t; render(); });
+}
+function logout(){ token=""; user=null; localStorage.clear(); tab="home"; render(); }
+
+async function farmerHome(){
+  booking = await api("/api/my-booking").catch(()=>null);
+  smart = await api("/api/smart").catch(()=>null);
+  const b = booking, best = smart&&smart.best;
+  el(`<div class="hero"><h1>Hello ${user.name.split(" ")[0]}</h1><p class="muted">${user.village||user.district||""}</p></div>
+    <div class="card">${b?`<div class="muted">Active token</div><div style="font-size:28px;font-weight:800">${b.tokenNo}</div><div class="muted">${b.centreName} · ${b.status}</div>`:`<div class="muted">No token yet</div><div style="font-weight:800">Book a slot</div>`}</div>
+    ${best?`<div class="card"><div class="muted">Suggested yard</div><b>${best.name}</b><div class="muted">${best.waiting||0} waiting · ${best.status}</div></div>`:""}
+    <button class="btn" onclick="tab='book';render()">Book slot</button>`);
+}
+async function bookView(){
+  centres = await api("/api/centres");
+  smart = await api("/api/smart").catch(()=>null);
+  const ranked = (smart&&smart.ranked)||centres;
+  el(`<h1 style="font-size:24px">Book slot</h1>
+    <label>Centre</label><select id="c">${ranked.map(x=>`<option value="${x.id}">${x.name} · ${x.status} · ${x.waiting||0} wait</option>`).join("")}</select>
+    <label>Date</label><input id="d" type="date"/>
+    <label>Window</label><select id="w"><option>09:00–11:00</option><option>11:00–13:00</option><option>13:00–15:00</option></select>
+    <label>Quintal</label><input id="q" value="20" inputmode="decimal"/>
+    <button class="btn" id="bk">Confirm</button><p class="err" id="err"></p>`);
+  document.getElementById("d").value = new Date().toISOString().slice(0,10);
+  document.getElementById("bk").onclick = async ()=>{
+    try{
+      const slots = await api("/api/slots?centreId="+c.value);
+      const pick = (slots||[]).find(s=>s.window===w.value && s.date===d.value) || (slots||[])[0];
+      if(!pick) throw new Error("No slot that day");
+      await api("/api/book",{method:"POST",body:{slotId:pick.id,qty:q.value}});
+      if("Notification" in window && Notification.permission==="granted") new Notification("AnnaSetu",{body:"Slot booked"});
+      tab="token"; render();
+    }catch(e){ err.textContent=e.message; }
+  };
+}
+async function tokenView(){
+  booking = await api("/api/my-booking");
+  if(!booking){ el("<div class='card'>No token. Book first.</div>"); return; }
+  const payload = encodeURIComponent("ANNASETU|"+booking.tokenNo+"|"+(booking.centreName||"")+"|"+(booking.date||""));
+  const qr = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data="+payload;
+  el(`<div class="token"><div class="muted">GATE PASS</div><div class="n">${booking.tokenNo}</div>
+    <img src="${qr}" width="180" height="180" style="background:#fff;border-radius:16px;padding:10px;margin-top:10px"/>
+    <div style="margin-top:8px">${booking.centreName}</div>
+    <div class="muted">${booking.date} · ${booking.window}</div>
+    <div class="chip" style="margin-top:8px">${booking.status}</div></div>`);
+}
+async function trackView(){
+  booking = await api("/api/my-booking");
+  const steps=["booked","checked_in","weighed","lifted","delivered","paid"];
+  const st = booking&&booking.status;
+  el(`<h1 style="font-size:24px">Track</h1>`+(steps.map(s=>`<div class="row"><b>${s.replace("_"," ")}</b><span class="chip">${s===st?"now":""}</span></div>`).join("")));
+}
+function moreView(){
+  el(`<h1 style="font-size:24px">More</h1>
+    <div class="card"><div class="muted">${user.role}</div><b>${user.name}</b><div class="muted">${user.phone}</div></div>
+    <div class="perm">Camera: gate QR. Notifications: token and payment. Storage: save gate pass.</div>
+    <button class="btn btn2" id="np">Enable notifications</button>
+    <button class="btn btn3" id="lo">Logout</button>`);
+  document.getElementById("np").onclick = async ()=>{
+    if(!("Notification" in window)) return toast("No banners on this device");
+    const p = await Notification.requestPermission();
+    if(p==="granted") new Notification("AnnaSetu",{body:"Alerts on"});
+  };
+  document.getElementById("lo").onclick = logout;
+}
+async function centreQueue(){
+  const list = await api("/api/queue/C1");
+  const waiting = list.filter(b=>b.status==="booked").length;
+  const inside = list.filter(b=>b.status==="checked_in").length;
+  el(`<h1 style="font-size:24px">Yard board</h1>
+    <div class="card"><div class="muted">Outside / inside</div><b>${waiting} · ${inside}</b></div>
+    ${list.map(b=>`<div class="row"><div><b>${b.tokenNo}</b> ${b.farmerName}<div class="muted">${b.status}</div></div>
+      ${b.status==="booked"?`<button class="chip" data-i="${b.id}">In</button>`:""}</div>`).join("")||"<p class='muted'>Empty</p>"}`);
+  document.querySelectorAll("[data-i]").forEach(btn=>btn.onclick=async()=>{ await api("/api/checkin",{method:"POST",body:{bookingId:btn.dataset.i}}); centreQueue(); });
+}
+async function centreScan(){
+  el(`<h1 style="font-size:24px">Scan token</h1>
+    <p class="muted">Type the number under the QR, or open gate booth for camera.</p>
+    <input id="tok" placeholder="1108"/>
+    <button class="btn" id="f">Find</button>
+    <div id="box"></div>
+    <a class="btn btn2" style="display:block;text-align:center;margin-top:12px;text-decoration:none" href="/gate.html">Open camera booth</a>`);
+  document.getElementById("f").onclick=async()=>{
+    try{
+      const found = await api("/api/scan",{method:"POST",body:{tokenNo:tok.value}});
+      box.innerHTML = `<div class="card"><b>${found.farmerName}</b><div>${found.tokenNo} · ${found.status}</div>
+        ${found.status==="booked"?`<button class="btn" id="al">Allow entry</button><button class="btn btn3" id="hd">Hold outside</button>`:""}</div>`;
+      document.getElementById("al")&&(document.getElementById("al").onclick=async()=>{ await api("/api/checkin",{method:"POST",body:{bookingId:found.id}}); if("Notification" in window&&Notification.permission==="granted") new Notification("AnnaSetu",{body:found.tokenNo+" checked in"}); tab="home"; render(); });
+      document.getElementById("hd")&&(document.getElementById("hd").onclick=()=>{ box.innerHTML += "<p class='muted'>Held outside.</p>"; });
+    }catch(e){ box.innerHTML = "<p class='err'>"+e.message+"</p>"; }
+  };
+}
+
+async function render(){
+  document.getElementById("who").textContent = user ? (user.name+" · "+user.role) : "Phone app · Render live";
+  if(!user){ loginView(); return; }
+  nav();
+  try{
+    if(user.role==="farmer"){
+      if(tab==="book") await bookView();
+      else if(tab==="token") await tokenView();
+      else if(tab==="track") await trackView();
+      else if(tab==="more") moreView();
+      else await farmerHome();
+    } else if(user.role==="centre"){
+      if(tab==="scan") await centreScan();
+      else if(tab==="more") moreView();
+      else await centreQueue();
+    } else {
+      el(`<div class="card"><b>${user.role}</b><p class="muted">Use the laptop site for the full desk. This phone shell is farmer + gate first.</p>
+        <a class="btn" style="display:block;text-align:center;text-decoration:none" href="/">Open full site</a></div>`);
+    }
+  }catch(e){ el("<div class='card err'>"+e.message+"</div>"); }
+}
+render();
+</script>
+</body>
+</html>

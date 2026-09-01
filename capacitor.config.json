@@ -3,6 +3,11 @@
   "appName": "AnnaSetu",
   "webDir": "public",
   "server": {
-    "androidScheme": "https"
+    "url": "https://annasetu-tp6p.onrender.com/m.html",
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
   }
 }
