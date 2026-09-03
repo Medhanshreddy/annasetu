@@ -75,15 +75,15 @@ function setLang(lang) {
 }
 
 function navFor(role) {
-  if (role === "farmer") return [["home",t("home")],["book",t("book")],["token",t("token")],["track",t("track")],["more",t("more")]];
+  if (role === "farmer") return [["home",t("home")],["book",t("book")],["advise","Crop"],["token",t("token")],["more",t("more")]];
   if (role === "centre") return [["home",t("queue")],["scan",t("scan")],["yard",t("yard")],["more",t("more")]];
   if (role === "transport") return [["home",t("trips")],["more",t("more")]];
   if (role === "payment") return [["home",t("dbt")],["more",t("more")]];
   if (role === "sms") return [["home","SMS"],["more",t("more")]];
   if (role === "officer") return [["home",t("myDistrict")],["heat",t("crowded")],["tickets",t("tickets")],["more",t("more")]];
   if (role === "admin") return [["home",t("control")],["heat",t("crowded")],["tickets",t("tickets")],["more",t("more")]];
-  if (role === "collector") return [["home",t("collector")],["staff",t("officers")],["heat",t("yards")],["more",t("more")]];
-  if (role === "minister") return [["home",t("state")],["staff",t("cadre")],["heat",t("heatmap")],["more",t("more")]];
+  if (role === "collector") return [["home",t("collector")],["staff",t("officers")],["heat",t("yards")],["stats","Stats"],["more",t("more")]];
+  if (role === "minister") return [["home",t("state")],["staff",t("cadre")],["heat",t("heatmap")],["stats","Stats"],["more",t("more")]];
   return [["home",t("home")],["more",t("more")]];
 }
 
@@ -206,6 +206,7 @@ function farmerHome() {
         <button class="btn gold full" data-go="token">${t("gateToken")}</button>
         <button class="btn soft full" data-go="track">${t("trackLot")}</button>
         <button class="btn soft full" data-go="map">${t("centreMap")}</button>
+        <button class="btn soft full" data-go="advise">Crop + advisor</button>
         <button class="btn soft full" data-go="help">${t("helpDesk")}</button>
         <button class="btn soft full" data-go="more">${t("profile")}</button>
       </div>
@@ -297,6 +298,29 @@ function heatView() {
     ${list.map(c => `<div style="margin:10px 0"><div class="centre" style="border:0;padding:0"><b>${c.name}</b><span class="muted">${c.waiting} waiting · ${c.heat}%</span></div>
     <div class="heatbar"><i style="width:${c.heat}%;background:${c.heat>70?"#b42318":c.heat>40?"#c2410c":"#0b6e4f"}"></i></div></div>`).join("") || "Loading…"}
   </div>`;
+}
+
+
+function adviseView() {
+  const crop = (state.user.crop || "Paddy").toLowerCase().replace(" ", "");
+  return `<div class="card"><h3>Season crop + advisor</h3>
+    <p class="muted">MSP sale is a 2–3 month window. Pick what you grew. The advisor uses a demo year-book (not live IMD).</p>
+    <label>Your crop</label>
+    <select id="myCrop">
+      <option value="paddy">Paddy / వరి / धान</option>
+      <option value="maize">Maize</option>
+      <option value="jowar">Jowar</option>
+      <option value="bajra">Bajra</option>
+      <option value="cotton">Cotton</option>
+      <option value="redgram">Redgram</option>
+    </select>
+    <button class="btn full" id="saveCrop" style="margin-top:10px">Save crop</button>
+    <button class="btn gold full" id="askBot" style="margin-top:8px">Ask advisor</button>
+    <div id="advBox" class="muted" style="margin-top:12px">Tap Ask advisor.</div>
+  </div>`;
+}
+function statsView() {
+  return `<div class="card" id="stbox"><h3>Crop statistics</h3><p class="muted">Season load + demo year book for the district desk.</p></div>`;
 }
 
 function helpView() {
@@ -408,12 +432,13 @@ async function render() {
   } catch(e) { if (String(e.message).includes("Login")) return logout(); }
   let body = "";
   if (state.user.role === "farmer") {
-    body = state.tab==="book"?bookView():state.tab==="token"?tokenView():state.tab==="track"?trackView():state.tab==="map"?mapView():state.tab==="help"?helpView():state.tab==="more"?moreView():farmerHome();
+    body = state.tab==="book"?bookView():state.tab==="advise"?adviseView():state.tab==="token"?tokenView():state.tab==="track"?trackView():state.tab==="map"?mapView():state.tab==="help"?helpView():state.tab==="more"?moreView():farmerHome();
   } else if (state.user.role === "centre") {
     body = state.tab==="more"?moreView():state.tab==="scan"?`<div class="card"><h3>Scan / enter gate token</h3><input id="scanTok" placeholder="1108" /><button class="btn full" id="doScan" style="margin-top:10px">Find farmer</button><div id="scanRes"></div></div>`:state.tab==="yard"?`<div class="card"><h3>Yard status override</h3><p class="muted">Auto crowd uses bookings. You may override if the physical yard is jammed.</p><div id="yardBox"></div></div>`:`<div class="card" id="qbox">Loading queue…</div>`;
   } else if (state.user.role === "transport") body = state.tab==="more"?moreView():`<div class="card" id="tbox">Loading trips…</div>`;
   else if (state.user.role === "payment") body = state.tab==="more"?moreView():`<div class="card" id="pbox">Loading payments…</div>`;
   else if (state.user.role === "sms") body = state.tab==="more"?moreView():`<div class="card" id="smsStation"><h3>iPhone SMS station · 9666939399</h3><p class="muted">Each card opens Apple Messages. Tap Send so the text leaves from your SIM.</p><div id="pend"></div></div>`;
+  else if (state.tab==="stats") body = statsView();
   else if (state.tab==="heat") body = heatView();
   else if (state.tab==="tickets") body = `<div class="card" id="tkbox">Loading tickets…</div>`;
   else if (state.tab==="staff") body = `<div class="card" id="staffBox">Loading officers…</div>`;
@@ -424,6 +449,8 @@ async function render() {
   root.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; render(); });
   root.querySelectorAll("[data-go]").forEach(b => b.onclick = () => { state.tab = b.dataset.go; render(); });
   if (state.tab==="book") wireBook();
+  if (state.tab==="advise") wireAdvise();
+  if (state.tab==="stats") loadCropStats();
   if (state.tab==="token") wireToken();
   if (state.tab==="more" || state.tab==="sms" || state.tab==="help") wireMore();
   if (state.user.role==="centre" && state.tab==="home") loadQueue();
@@ -536,6 +563,45 @@ async function wireMore() {
       $("#gmsg").value = "";
     } catch(e) { toast(e.message); }
   });
+}
+
+
+function wireAdvise() {
+  $("#saveCrop")?.addEventListener("click", async () => {
+    try {
+      const crop = $("#myCrop").value;
+      const name = {paddy:"Paddy",maize:"Maize",jowar:"Jowar",bajra:"Bajra",cotton:"Cotton",redgram:"Redgram"}[crop] || "Paddy";
+      const u = await api("/api/me/crop", { method:"POST", body:{ crop: name } });
+      state.user = u;
+      toast("Crop saved: " + name);
+    } catch(e) { toast(e.message); }
+  });
+  $("#askBot")?.addEventListener("click", async () => {
+    try {
+      const crop = $("#myCrop").value;
+      const r = await api("/api/advise", { method:"POST", body:{ crop, district: state.user.district, lang: state.lang } });
+      $("#advBox").innerHTML = `<p><b>${r.season.name}</b> · ${r.season.months} · ${r.season.windowDays} days</p>
+        <p class="muted">${r.source}</p>
+        ${(r.text||[]).map(x=>`<p>${x}</p>`).join("")}
+        <h3 style="margin-top:10px">Past years (${r.crop.name})</h3>
+        ${(r.history||[]).map(h=>`<div class="centre"><div><b>${h.year}</b><div class="muted">${h.note} · rain ${h.rain} · yield ${h.yield}</div></div><span class="chip">₹${h.msp}</span></div>`).join("")}
+        <h3 style="margin-top:10px">Rank this season</h3>
+        ${(r.ranked||[]).map(c=>`<div class="centre"><div><b>${c.name}</b><div class="muted">${c.window} · water ${c.water}</div></div><span class="chip">${c.score}</span></div>`).join("")}`;
+    } catch(e) { $("#advBox").innerHTML = `<p class="err">${e.message}</p>`; }
+  });
+}
+async function loadCropStats() {
+  try {
+    const s = await api("/api/crop-stats");
+    const hist = s.history && s.history.paddy || [];
+    $("#stbox").innerHTML = `<h3>Season statistics</h3>
+      <p><b>${s.season.name}</b> · ${s.season.months} · ${s.season.windowDays}-day window</p>
+      <p class="muted">${s.disclaimer}</p>
+      <h3>Farmers by crop (this database)</h3>
+      ${Object.entries(s.farmersByCrop||{}).map(([k,v])=>`<div class="centre"><b>${k}</b><span class="chip">${v}</span></div>`).join("") || "<p class='muted'>No crop split yet</p>"}
+      <h3>Paddy year book (demo)</h3>
+      ${hist.map(h=>`<div class="centre"><div><b>${h.year}</b><div class="muted">${h.note} · rain ${h.rain} · yield ${h.yield}</div></div><span class="chip">₹${h.msp}</span></div>`).join("")}`;
+  } catch(e) { if ($("#stbox")) $("#stbox").innerHTML = e.message; }
 }
 
 function wireScan() {

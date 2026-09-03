@@ -4,6 +4,7 @@ const path = require("path");
 const { URL } = require("url");
 const { connect, seed, id, nowIso, ensureHourlySlots, istParts, ensureDemoUsers } = require("./db");
 const { sendSms, loadSettings, saveSettings } = require("./sms");
+const crops = require("./crops");
 
 const PORT = process.env.PORT || 8080;
 const PUBLIC = fs.existsSync(path.join(__dirname, "public", "index.html"))
@@ -306,7 +307,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, mode: next.mode, simGatewayUrl: next.simGatewayUrl });
     }
 
-    const open = ["/api/health", "/api/login", "/api/register", "/api/centres", "/api/slots", "/api/smart", "/api/otp/request", "/api/otp/verify", "/api/sms/config"];
+    const open = ["/api/health", "/api/login", "/api/register", "/api/centres", "/api/slots", "/api/smart", "/api/otp/request", "/api/otp/verify", "/api/sms/config", "/api/crops", "/api/season", "/api/crop-stats", "/api/advise"];
     if (p.startsWith("/api/") && !open.includes(p) && !p.startsWith("/api/queue") && !u) return json(res, 401, { error: "Login required" });
     if (p === "/api/staff") {
       const rows = db.prepare("SELECT id, role, name, phone, district, active FROM users WHERE role IN ('officer','collector','admin','centre','payment','transport','minister') ORDER BY role, name").all();
@@ -462,6 +463,21 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { centres, best: ranked[0], ranked, mspRate: 2300, hour });
     }
 
+
+    if (p === "/api/crops") return json(res, 200, { season: crops.SEASON, crops: crops.CROPS });
+    if (p === "/api/season") return json(res, 200, crops.SEASON);
+    if (p === "/api/crop-stats") return json(res, 200, crops.statsFromDb(db));
+    if (p === "/api/advise" && method === "POST") {
+      const b = await body(req);
+      return json(res, 200, crops.advise({ crop: b.crop, district: b.district || (u && u.district), lang: b.lang }));
+    }
+    if (p === "/api/me/crop" && method === "POST") {
+      if (!u) return json(res, 401, { error: "Login required" });
+      const b = await body(req);
+      const crop = String(b.crop || "Paddy");
+      db.prepare("UPDATE users SET crop=? WHERE id=?").run(crop, u.id);
+      return json(res, 200, safeUser(db.prepare("SELECT * FROM users WHERE id=?").get(u.id)));
+    }
     if (p === "/api/msp") {
       const qty = Number(url.searchParams.get("qty") || 20);
       const rate = 2300;
